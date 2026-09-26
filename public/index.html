@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>设备停机原因分析 · 最小基础故障组合</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="logo">
+        <span class="logo-mark">⛭</span>
+        <div>
+          <h1>设备停机原因分析</h1>
+          <p>故障树 · 最小割集（MCS）求解 —— 找出使顶层故障发生的最小基础故障组合</p>
+        </div>
+      </div>
+      <button id="loadSampleBtn" class="btn btn-ghost" type="button">载入示例</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- 第一步：基础故障 -->
+    <section class="card">
+      <div class="card-head">
+        <h2><span class="step">1</span>基础故障</h2>
+        <span class="hint">至多 12 个不可再分的故障，名称不可重复</span>
+      </div>
+      <div id="basicList" class="basic-list"></div>
+      <div class="row-between">
+        <button id="addBasicBtn" class="btn btn-secondary" type="button">＋ 添加基础故障</button>
+        <span id="basicCount" class="count-badge">0 / 12</span>
+      </div>
+    </section>
+
+    <!-- 第二步：逻辑门 -->
+    <section class="card">
+      <div class="card-head">
+        <h2><span class="step">2</span>逻辑门</h2>
+        <span class="hint">输入可引用基础故障或其他门；AND = 全部发生，OR = 任一发生</span>
+      </div>
+      <div id="gateList" class="gate-list"></div>
+      <button id="addGateBtn" class="btn btn-secondary" type="button">＋ 添加逻辑门</button>
+    </section>
+
+    <!-- 第三步：顶层故障 -->
+    <section class="card">
+      <div class="card-head">
+        <h2><span class="step">3</span>顶层故障</h2>
+        <span class="hint">选择需要分析的停机事件</span>
+      </div>
+      <label class="top-label" for="topSelect">顶层故障</label>
+      <select id="topSelect" class="input">
+        <option value="">— 请选择顶层故障 —</option>
+      </select>
+    </section>
+
+    <div class="actions">
+      <button id="analyzeBtn" class="btn btn-primary" type="button">分析停机原因</button>
+      <button id="clearBtn" class="btn btn-ghost" type="button">清空全部</button>
+    </div>
+
+    <!-- 错误 -->
+    <section id="errorPanel" class="panel panel-error" hidden>
+      <h3>输入存在问题</h3>
+      <ul id="errorList"></ul>
+    </section>
+
+    <!-- 结果 -->
+    <section id="resultPanel" class="panel panel-result" hidden>
+      <div class="result-head">
+        <h3>分析结果</h3>
+        <p id="resultSummary" class="summary"></p>
+      </div>
+      <ol id="resultList" class="result-list"></ol>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      自底向上计算：AND 门合并子组合，OR 门汇总子组合，每步去重并剔除超集。
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

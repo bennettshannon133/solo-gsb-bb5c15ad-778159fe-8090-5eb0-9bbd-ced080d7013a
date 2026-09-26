@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    image: shutdown-rootcause:latest
+    container_name: shutdown-rootcause
+    ports:
+      - "3000:3000"
+    environment:
+      # 容器内监听端口；如需改宿主机端口，改左侧映射即可（如 "8080:3000"）
+      - PORT=3000
+      - NODE_ENV=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

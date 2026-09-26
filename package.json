@@ -1,0 +1,17 @@
+{
+  "name": "shutdown-rootcause",
+  "version": "1.0.0",
+  "description": "设备停机原因分析：录入故障树（基础故障 + AND/OR 门），自底向上计算顶层故障的最小割集（最小基础故障组合）",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
