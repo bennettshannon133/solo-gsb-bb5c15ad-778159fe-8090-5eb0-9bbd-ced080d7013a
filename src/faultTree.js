@@ -91,9 +91,10 @@ function minimize(cuts) {
 }
 
 /**
- * 分析故障树，返回最小割集。输入不合法时抛出带中文信息的 Error。
+ * 校验故障树输入，返回规范化后的结构（基础故障、门、顶层故障）。
+ * 输入不合法时抛出带中文信息的 Error（err.validationErrors 为完整问题列表）。
  */
-function analyzeFaultTree(input) {
+function validateFaultTree(input) {
   const errors = [];
   const data = input && typeof input === 'object' ? input : {};
 
@@ -237,6 +238,15 @@ function analyzeFaultTree(input) {
     throw err;
   }
 
+  return { basics, gates, gateOrder, topEvent, basicSet };
+}
+
+/**
+ * 分析故障树，返回最小割集。输入不合法时抛出带中文信息的 Error。
+ */
+function analyzeFaultTree(input) {
+  const { gates, gateOrder, topEvent, basicSet } = validateFaultTree(input);
+
   // ---- 6. 自底向上计算最小割集（记忆化） ----------------------------------
   const memo = new Map();
 
@@ -275,4 +285,4 @@ function analyzeFaultTree(input) {
   return { combinations, gates: gateOrder, topEvent };
 }
 
-module.exports = { analyzeFaultTree, minimize, unionSorted, isSubset, MAX_BASIC_FAULTS };
+module.exports = { analyzeFaultTree, validateFaultTree, minimize, unionSorted, isSubset, MAX_BASIC_FAULTS };

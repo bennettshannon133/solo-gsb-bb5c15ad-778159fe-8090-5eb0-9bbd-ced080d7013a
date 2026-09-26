@@ -5,7 +5,7 @@
 const MAX_BASICS = 12;
 
 const state = {
-  basics: [],          // { uid, name }
+  basics: [],          // { uid, name, prior, status: 'unknown'|'occurred'|'absent' }
   gates: [],           // { uid, name, type: 'AND'|'OR', inputs: Set<string> }
   topEvent: '',
   seq: 0,
@@ -22,6 +22,7 @@ const basicCountEl = $('#basicCount');
 const addBasicBtn = $('#addBasicBtn');
 const addGateBtn = $('#addGateBtn');
 const analyzeBtn = $('#analyzeBtn');
+const diagnoseBtn = $('#diagnoseBtn');
 const clearBtn = $('#clearBtn');
 const loadSampleBtn = $('#loadSampleBtn');
 const errorPanel = $('#errorPanel');
@@ -29,12 +30,21 @@ const errorList = $('#errorList');
 const resultPanel = $('#resultPanel');
 const resultList = $('#resultList');
 const resultSummary = $('#resultSummary');
+const diagPanel = $('#diagPanel');
+const diagList = $('#diagList');
+const diagSummary = $('#diagSummary');
+const diagConfirmed = $('#diagConfirmed');
 
 /* ---------------- 状态操作 ---------------- */
 
-function addBasic(name = '') {
+function addBasic(basic = {}) {
   if (state.basics.length >= MAX_BASICS) return;
-  state.basics.push({ uid: uid('b'), name });
+  state.basics.push({
+    uid: uid('b'),
+    name: basic.name || '',
+    prior: basic.prior !== undefined ? String(basic.prior) : '0.1',
+    status: basic.status || 'unknown',
+  });
   renderAll();
 }
 
@@ -111,13 +121,44 @@ function renderBasics() {
     });
     input.addEventListener('blur', renderAll);
 
+    const prob = document.createElement('input');
+    prob.className = 'input prob-input';
+    prob.type = 'number';
+    prob.min = '0';
+    prob.max = '1';
+    prob.step = '0.001';
+    prob.placeholder = '先验 0~1';
+    prob.title = '独立先验发生概率（0～1）';
+    prob.value = b.prior;
+    prob.addEventListener('input', () => { b.prior = prob.value; });
+
+    const statusSel = document.createElement('select');
+    statusSel.className = 'status-select';
+    statusSel.title = '现场确认情况';
+    [
+      ['unknown', '未确认'],
+      ['occurred', '已确认发生'],
+      ['absent', '已确认未发生'],
+    ].forEach(([val, text]) => {
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = text;
+      if (b.status === val) opt.selected = true;
+      statusSel.appendChild(opt);
+    });
+    statusSel.dataset.value = b.status;
+    statusSel.addEventListener('change', () => {
+      b.status = statusSel.value;
+      statusSel.dataset.value = b.status;
+    });
+
     const del = document.createElement('button');
     del.className = 'btn btn-danger-sm';
     del.type = 'button';
     del.textContent = '删除';
     del.addEventListener('click', () => deleteBasic(b.uid));
 
-    row.append(badge, input, del);
+    row.append(badge, input, prob, statusSel, del);
     basicListEl.appendChild(row);
   });
 
@@ -296,6 +337,7 @@ function buildPayload() {
 function hidePanels() {
   errorPanel.hidden = true;
   resultPanel.hidden = true;
+  diagPanel.hidden = true;
 }
 
 function showErrors(errors) {
@@ -307,11 +349,13 @@ function showErrors(errors) {
   });
   errorPanel.hidden = false;
   resultPanel.hidden = true;
+  diagPanel.hidden = true;
   errorPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function showResults(topEvent, combinations) {
   errorPanel.hidden = true;
+  diagPanel.hidden = true;
   resultPanel.hidden = false;
 
   // 页面按「故障数升序、名称（中文）字典序」排序，组合内故障同样按名称排序
@@ -380,15 +424,115 @@ async function analyze() {
   }
 }
 
+/* ---------------- 现场诊断 ---------------- */
+
+function buildDiagnosisPayload() {
+  const priors = {};
+  const evidence = {};
+  state.basics.forEach((b) => {
+    const name = b.name.trim();
+    if (!name) return;
+    priors[name] = b.prior;      // 字符串原样提交，服务端解析并校验
+    evidence[name] = b.status;
+  });
+  return { ...buildPayload(), priors, evidence };
+}
+
+function fmtPct(v) {
+  if (!(v > 0)) return '0%';
+  if (v >= 1) return '100%';
+  const pct = v * 100;
+  return pct < 0.01 ? '<0.01%' : `${pct.toFixed(2)}%`;
+}
+
+function showDiagnosis(data) {
+  errorPanel.hidden = true;
+  resultPanel.hidden = true;
+  diagPanel.hidden = false;
+
+  diagSummary.textContent =
+    `已知顶层故障「${data.topEvent}」确已发生：精确枚举出与现场标记一致的状态组合 ` +
+    `${data.stateCount} 个，其中顶层发生 ${data.topStateCount} 个；` +
+    `P(现场标记) = ${fmtPct(data.evidenceProbability)}，` +
+    `P(顶层发生 ∧ 现场标记) = ${fmtPct(data.topProbability)}。` +
+    `以下为各未确认基础故障的后验发生概率（降序）：`;
+
+  if (data.confirmed && data.confirmed.length > 0) {
+    diagConfirmed.hidden = false;
+    diagConfirmed.textContent =
+      '现场标记：' +
+      data.confirmed.map((c) => `${c.name}（${c.statusText}）`).join('、');
+  } else {
+    diagConfirmed.hidden = true;
+    diagConfirmed.textContent = '';
+  }
+
+  diagList.innerHTML = '';
+  if (data.results.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = '所有基础故障均已在现场确认，没有需要计算后验概率的故障。';
+    diagList.appendChild(li);
+  } else {
+    data.results.forEach((r) => {
+      const li = document.createElement('li');
+
+      const name = document.createElement('span');
+      name.className = 'fault-chip';
+      name.textContent = r.name;
+
+      const bar = document.createElement('span');
+      bar.className = 'prob-bar';
+      const fill = document.createElement('span');
+      fill.className = 'prob-fill' + (r.posterior >= 0.5 ? ' high' : '');
+      const width = r.posterior > 0 ? Math.max(r.posterior * 100, 2) : 0;
+      fill.style.width = `${Math.min(width, 100)}%`;
+      bar.appendChild(fill);
+
+      const val = document.createElement('span');
+      val.className = 'prob-value';
+      val.textContent = fmtPct(r.posterior);
+
+      const prior = document.createElement('span');
+      prior.className = 'prior-note';
+      prior.textContent = `先验 ${fmtPct(r.prior)}`;
+
+      li.append(name, bar, val, prior);
+      diagList.appendChild(li);
+    });
+  }
+
+  diagPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function diagnose() {
+  hidePanels();
+  try {
+    const resp = await fetch('/api/diagnose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildDiagnosisPayload()),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      // 409 时 errors 中为「观测与模型矛盾」的说明
+      showErrors(data.errors || ['诊断失败，请检查输入。']);
+      return;
+    }
+    showDiagnosis(data);
+  } catch (e) {
+    showErrors(['无法连接诊断服务，请稍后重试。']);
+  }
+}
+
 /* ---------------- 示例与清空 ---------------- */
 
 function loadSample() {
   state.basics = [
-    { uid: uid('b'), name: '主电源中断' },
-    { uid: uid('b'), name: '备用电源失效' },
-    { uid: uid('b'), name: '冷却泵停转' },
-    { uid: uid('b'), name: '散热风扇损坏' },
-    { uid: uid('b'), name: '人员误操作' },
+    { uid: uid('b'), name: '主电源中断', prior: '0.02', status: 'unknown' },
+    { uid: uid('b'), name: '备用电源失效', prior: '0.05', status: 'unknown' },
+    { uid: uid('b'), name: '冷却泵停转', prior: '0.03', status: 'unknown' },
+    { uid: uid('b'), name: '散热风扇损坏', prior: '0.04', status: 'unknown' },
+    { uid: uid('b'), name: '人员误操作', prior: '0.01', status: 'unknown' },
   ];
   const gPower = { uid: uid('g'), name: '供电失效', type: 'OR',
     inputs: new Set(['主电源中断', '备用电源失效']) };
@@ -416,6 +560,7 @@ function clearAll() {
 addBasicBtn.addEventListener('click', () => addBasic());
 addGateBtn.addEventListener('click', () => addGate());
 analyzeBtn.addEventListener('click', analyze);
+diagnoseBtn.addEventListener('click', diagnose);
 clearBtn.addEventListener('click', clearAll);
 loadSampleBtn.addEventListener('click', loadSample);
 

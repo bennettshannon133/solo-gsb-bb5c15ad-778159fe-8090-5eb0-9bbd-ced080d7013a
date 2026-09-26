@@ -13,7 +13,7 @@
         <span class="logo-mark">⛭</span>
         <div>
           <h1>设备停机原因分析</h1>
-          <p>故障树 · 最小割集（MCS）求解 —— 找出使顶层故障发生的最小基础故障组合</p>
+          <p>故障树 · 最小割集（MCS）求解 ＋ 现场诊断：已知顶层故障发生时，按后验概率定位最可疑的基础故障</p>
         </div>
       </div>
       <button id="loadSampleBtn" class="btn btn-ghost" type="button">载入示例</button>
@@ -25,7 +25,7 @@
     <section class="card">
       <div class="card-head">
         <h2><span class="step">1</span>基础故障</h2>
-        <span class="hint">至多 12 个不可再分的故障，名称不可重复</span>
+        <span class="hint">至多 12 个；填写独立先验概率（0～1），现场已确认的故障可标记「已确认发生 / 未发生」</span>
       </div>
       <div id="basicList" class="basic-list"></div>
       <div class="row-between">
@@ -58,6 +58,7 @@
 
     <div class="actions">
       <button id="analyzeBtn" class="btn btn-primary" type="button">分析停机原因</button>
+      <button id="diagnoseBtn" class="btn btn-accent" type="button">现场诊断（已知顶层故障发生）</button>
       <button id="clearBtn" class="btn btn-ghost" type="button">清空全部</button>
     </div>
 
@@ -67,7 +68,7 @@
       <ul id="errorList"></ul>
     </section>
 
-    <!-- 结果 -->
+    <!-- 最小割集结果 -->
     <section id="resultPanel" class="panel panel-result" hidden>
       <div class="result-head">
         <h3>分析结果</h3>
@@ -75,11 +76,22 @@
       </div>
       <ol id="resultList" class="result-list"></ol>
     </section>
+
+    <!-- 现场诊断结果 -->
+    <section id="diagPanel" class="panel panel-diag" hidden>
+      <div class="result-head">
+        <h3>现场诊断结果</h3>
+        <p id="diagSummary" class="summary"></p>
+        <p id="diagConfirmed" class="confirmed-line" hidden></p>
+      </div>
+      <ol id="diagList" class="diag-list"></ol>
+    </section>
   </main>
 
   <footer class="site-footer">
     <div class="wrap">
-      自底向上计算：AND 门合并子组合，OR 门汇总子组合，每步去重并剔除超集。
+      最小割集：自底向上合并/汇总子组合，每步去重并剔除超集。
+      现场诊断：精确枚举与现场标记一致的状态组合，共享分支不重复计数，只保留顶层发生的组合后按条件概率归一化。
     </div>
   </footer>
 
