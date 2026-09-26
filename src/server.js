@@ -3,6 +3,7 @@
 const path = require('path');
 const express = require('express');
 const { analyzeFaultTree } = require('./faultTree');
+const { diagnoseFaultTree } = require('./diagnosis');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -28,6 +29,32 @@ app.post('/api/analyze', (req, res) => {
   } catch (err) {
     if (err.validationErrors) {
       return res.status(400).json({ ok: false, errors: err.validationErrors });
+    }
+    console.error(err);
+    res.status(500).json({ ok: false, errors: ['服务器内部错误。'] });
+  }
+});
+
+// 现场诊断：已知顶层故障确已发生，按先验概率与现场标记计算后验概率
+app.post('/api/diagnose', (req, res) => {
+  try {
+    const result = diagnoseFaultTree(req.body);
+    res.json({
+      ok: true,
+      topEvent: result.topEvent,
+      evidenceProbability: result.evidenceProbability,
+      statesEnumerated: result.statesEnumerated,
+      posteriors: result.posteriors,
+    });
+  } catch (err) {
+    if (err.validationErrors) {
+      return res.status(400).json({ ok: false, errors: err.validationErrors });
+    }
+    if (err.contradiction) {
+      // 观测与模型矛盾：证据概率为零，无法归一化得到后验
+      return res
+        .status(422)
+        .json({ ok: false, contradiction: true, errors: [err.message] });
     }
     console.error(err);
     res.status(500).json({ ok: false, errors: ['服务器内部错误。'] });

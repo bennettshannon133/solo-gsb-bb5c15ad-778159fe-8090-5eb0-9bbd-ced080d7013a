@@ -130,6 +130,10 @@ main { padding: 26px 20px 40px; }
   font-weight: 600;
 }
 .basic-row .input { flex: 1; }
+.basic-row .prior-input {
+  flex: 0 0 112px;
+  text-align: center;
+}
 
 /* ---- Gates ---- */
 .gate-list { display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px; }
@@ -359,6 +363,85 @@ main .btn-ghost:hover { background: #eef1f6; color: var(--text); }
 }
 .fault-chip + .fault-chip::before { content: none; }
 .combo-op { color: var(--text-muted); font-size: 12px; }
+
+/* ---- 现场诊断 ---- */
+.diag-list { display: flex; flex-direction: column; gap: 10px; }
+.diag-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fafbfd;
+}
+.diag-name { font-weight: 600; font-size: 14px; }
+.diag-prior {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--chip);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.diag-row .seg { margin-left: auto; }
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.seg button {
+  border: none;
+  background: #fff;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button:hover { background: #eef1f6; }
+.seg button.active-unknown { background: #dfe5ee; color: var(--text); font-weight: 600; }
+.seg button.active-occurred { background: var(--danger); color: #fff; font-weight: 600; }
+.seg button.active-absent { background: var(--ok); color: #fff; font-weight: 600; }
+
+.panel-diag {
+  background: var(--or-bg);
+  border: 1px solid #bfd6f6;
+}
+.panel-diag .result-head h3 { color: var(--primary); }
+.panel-diag .summary { color: #2c3e5a; }
+.panel-diag .result-list li::before { background: var(--primary); }
+.diag-result .prob-bar {
+  flex: 1;
+  min-width: 120px;
+  height: 10px;
+  background: var(--bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.diag-result .prob-bar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), #7fb0ff);
+}
+.diag-result .prob-value {
+  flex: 0 0 64px;
+  text-align: right;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--primary-dark);
+}
+
+.panel-warn {
+  background: #fff7e6;
+  border: 1px solid #f0d9a8;
+  color: #7a5a1f;
+}
+.panel-warn h3 { margin: 0 0 8px; font-size: 15px; }
+.panel-warn .summary { margin: 0; color: #7a5a1f; }
 
 .site-footer {
   border-top: 1px solid var(--border);

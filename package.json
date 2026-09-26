@@ -1,7 +1,7 @@
 {
   "name": "shutdown-rootcause",
   "version": "1.0.0",
-  "description": "设备停机原因分析：录入故障树（基础故障 + AND/OR 门），自底向上计算顶层故障的最小割集（最小基础故障组合）",
+  "description": "设备停机原因分析：录入故障树（基础故障 + AND/OR 门 + 先验概率），计算顶层故障的最小割集，并支持基于现场标记的后验概率诊断",
   "main": "src/server.js",
   "type": "commonjs",
   "engines": {

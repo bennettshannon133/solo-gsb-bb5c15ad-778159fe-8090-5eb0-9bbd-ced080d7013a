@@ -1,11 +1,11 @@
 'use strict';
 
-/* 故障树编辑器前端：状态保存在内存，分析时提交给 /api/analyze */
+/* 故障树编辑器前端：状态保存在内存，分析/诊断时提交给 /api/analyze、/api/diagnose */
 
 const MAX_BASICS = 12;
 
 const state = {
-  basics: [],          // { uid, name }
+  basics: [],          // { uid, name, prior, mark: 'unknown'|'occurred'|'absent' }
   gates: [],           // { uid, name, type: 'AND'|'OR', inputs: Set<string> }
   topEvent: '',
   seq: 0,
@@ -29,12 +29,19 @@ const errorList = $('#errorList');
 const resultPanel = $('#resultPanel');
 const resultList = $('#resultList');
 const resultSummary = $('#resultSummary');
+const diagListEl = $('#diagList');
+const diagnoseBtn = $('#diagnoseBtn');
+const diagPanel = $('#diagPanel');
+const diagSummary = $('#diagSummary');
+const diagResultList = $('#diagResultList');
+const contradictionPanel = $('#contradictionPanel');
+const contradictionMsg = $('#contradictionMsg');
 
 /* ---------------- 状态操作 ---------------- */
 
-function addBasic(name = '') {
+function addBasic(name = '', prior = '') {
   if (state.basics.length >= MAX_BASICS) return;
-  state.basics.push({ uid: uid('b'), name });
+  state.basics.push({ uid: uid('b'), name, prior, mark: 'unknown' });
   renderAll();
 }
 
@@ -86,6 +93,7 @@ function renderAll() {
   renderBasics();
   renderGates();
   renderTopSelect();
+  renderDiagnosis();
 }
 
 function renderBasics() {
@@ -111,13 +119,27 @@ function renderBasics() {
     });
     input.addEventListener('blur', renderAll);
 
+    const prior = document.createElement('input');
+    prior.className = 'input prior-input';
+    prior.type = 'number';
+    prior.min = '0';
+    prior.max = '1';
+    prior.step = '0.01';
+    prior.placeholder = '先验 0~1';
+    prior.title = '该故障的独立先验发生概率（0～1），用于现场诊断';
+    prior.value = b.prior;
+    prior.addEventListener('input', () => {
+      b.prior = prior.value;
+    });
+    prior.addEventListener('blur', renderAll);
+
     const del = document.createElement('button');
     del.className = 'btn btn-danger-sm';
     del.type = 'button';
     del.textContent = '删除';
     del.addEventListener('click', () => deleteBasic(b.uid));
 
-    row.append(badge, input, del);
+    row.append(badge, input, prior, del);
     basicListEl.appendChild(row);
   });
 
@@ -279,6 +301,56 @@ topSelectEl.addEventListener('change', () => {
   state.topEvent = topSelectEl.value;
 });
 
+/* ---------------- 现场诊断（标记录入） ---------------- */
+
+const MARK_OPTIONS = [
+  { value: 'unknown', label: '未确认' },
+  { value: 'occurred', label: '已确认发生' },
+  { value: 'absent', label: '已确认未发生' },
+];
+
+function renderDiagnosis() {
+  diagListEl.innerHTML = '';
+  const named = state.basics.filter((b) => b.name.trim());
+  if (named.length === 0) {
+    const empty = document.createElement('span');
+    empty.className = 'chip-empty';
+    empty.textContent = '请先在第 1 步定义基础故障并填写先验概率。';
+    diagListEl.appendChild(empty);
+    return;
+  }
+
+  named.forEach((b) => {
+    const row = document.createElement('div');
+    row.className = 'diag-row';
+
+    const name = document.createElement('span');
+    name.className = 'diag-name';
+    name.textContent = b.name.trim();
+
+    const prior = document.createElement('span');
+    prior.className = 'diag-prior';
+    prior.textContent = `先验 ${b.prior === '' ? '未填' : b.prior}`;
+
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    MARK_OPTIONS.forEach(({ value, label }) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      if (b.mark === value) btn.classList.add(`active-${value}`);
+      btn.addEventListener('click', () => {
+        b.mark = value;
+        renderDiagnosis();
+      });
+      seg.appendChild(btn);
+    });
+
+    row.append(name, prior, seg);
+    diagListEl.appendChild(row);
+  });
+}
+
 /* ---------------- 分析 ---------------- */
 
 function buildPayload() {
@@ -296,6 +368,8 @@ function buildPayload() {
 function hidePanels() {
   errorPanel.hidden = true;
   resultPanel.hidden = true;
+  diagPanel.hidden = true;
+  contradictionPanel.hidden = true;
 }
 
 function showErrors(errors) {
@@ -307,6 +381,8 @@ function showErrors(errors) {
   });
   errorPanel.hidden = false;
   resultPanel.hidden = true;
+  diagPanel.hidden = true;
+  contradictionPanel.hidden = true;
   errorPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -380,15 +456,109 @@ async function analyze() {
   }
 }
 
+/* ---------------- 现场诊断（后验概率） ---------------- */
+
+function buildDiagnosePayload() {
+  const priors = {};
+  const evidence = {};
+  state.basics.forEach((b) => {
+    const name = b.name.trim();
+    if (!name) return;
+    // 未填写时传 null，由后端统一报「缺少有效的先验概率」
+    priors[name] = b.prior === '' ? null : Number(b.prior);
+    if (b.mark === 'occurred') evidence[name] = 'occurred';
+    else if (b.mark === 'absent') evidence[name] = 'absent';
+  });
+  return { ...buildPayload(), priors, evidence };
+}
+
+function fmtPct(x, digits = 1) {
+  const pct = x * 100;
+  if (pct > 0 && pct < 10 ** -digits) return `<${10 ** -digits}%`;
+  return `${pct.toFixed(digits)}%`;
+}
+
+function showContradiction(errors) {
+  errorPanel.hidden = true;
+  diagPanel.hidden = true;
+  contradictionMsg.textContent = errors.join(' ');
+  contradictionPanel.hidden = false;
+  contradictionPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function showDiagnosis(data) {
+  contradictionPanel.hidden = true;
+  diagPanel.hidden = false;
+
+  diagSummary.textContent =
+    `已知顶层故障「${data.topEvent}」确已发生，且与现场标记一致：` +
+    `精确枚举 ${data.statesEnumerated} 个状态组合，` +
+    `证据概率 P = ${fmtPct(data.evidenceProbability, 2)}。` +
+    `各未确认基础故障的后验发生概率（按概率降序）：`;
+
+  diagResultList.innerHTML = '';
+  if (data.posteriors.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = '所有基础故障均已有现场确认标记，无待诊断项。';
+    diagResultList.appendChild(li);
+  }
+
+  data.posteriors.forEach(({ name, probability }) => {
+    const li = document.createElement('li');
+
+    const chip = document.createElement('span');
+    chip.className = 'fault-chip';
+    chip.textContent = name;
+
+    const bar = document.createElement('span');
+    bar.className = 'prob-bar';
+    const fill = document.createElement('span');
+    fill.style.width = `${(probability * 100).toFixed(2)}%`;
+    bar.appendChild(fill);
+
+    const pct = document.createElement('span');
+    pct.className = 'prob-value';
+    pct.textContent = fmtPct(probability);
+
+    li.append(chip, bar, pct);
+    diagResultList.appendChild(li);
+  });
+
+  diagPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function diagnose() {
+  hidePanels();
+  try {
+    const resp = await fetch('/api/diagnose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildDiagnosePayload()),
+    });
+    const data = await resp.json();
+    if (resp.status === 422 && data.contradiction) {
+      showContradiction(data.errors || ['证据概率为零，观测与模型矛盾。']);
+      return;
+    }
+    if (!resp.ok || !data.ok) {
+      showErrors(data.errors || ['诊断失败，请检查输入。']);
+      return;
+    }
+    showDiagnosis(data);
+  } catch (e) {
+    showErrors(['无法连接诊断服务，请稍后重试。']);
+  }
+}
+
 /* ---------------- 示例与清空 ---------------- */
 
 function loadSample() {
   state.basics = [
-    { uid: uid('b'), name: '主电源中断' },
-    { uid: uid('b'), name: '备用电源失效' },
-    { uid: uid('b'), name: '冷却泵停转' },
-    { uid: uid('b'), name: '散热风扇损坏' },
-    { uid: uid('b'), name: '人员误操作' },
+    { uid: uid('b'), name: '主电源中断', prior: '0.02', mark: 'unknown' },
+    { uid: uid('b'), name: '备用电源失效', prior: '0.05', mark: 'unknown' },
+    { uid: uid('b'), name: '冷却泵停转', prior: '0.08', mark: 'unknown' },
+    { uid: uid('b'), name: '散热风扇损坏', prior: '0.1', mark: 'unknown' },
+    { uid: uid('b'), name: '人员误操作', prior: '0.01', mark: 'unknown' },
   ];
   const gPower = { uid: uid('g'), name: '供电失效', type: 'OR',
     inputs: new Set(['主电源中断', '备用电源失效']) };
@@ -416,6 +586,7 @@ function clearAll() {
 addBasicBtn.addEventListener('click', () => addBasic());
 addGateBtn.addEventListener('click', () => addGate());
 analyzeBtn.addEventListener('click', analyze);
+diagnoseBtn.addEventListener('click', diagnose);
 clearBtn.addEventListener('click', clearAll);
 loadSampleBtn.addEventListener('click', loadSample);
 
